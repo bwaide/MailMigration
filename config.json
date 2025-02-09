@@ -1,0 +1,32 @@
+{
+    "folder_mapping": {
+        "Inbox": "INBOX",
+        "Gesendet": "Gesendete Objekte",
+        "Sent Mail": "Gesendete Objekte",
+        "Sent": "Gesendete Objekte",
+        "Alle Nachrichten": "Archive",
+        "All Mail": "Archive",
+        "Important": "INBOX",
+        "Markiert": "INBOX",
+        "Starred": "INBOX",
+        "Wichtig": "INBOX",
+        "Papierkorb": null,
+        "Trash": null,
+        "Spam": null,
+        "Entwürfe": null,
+        "Drafts": null,
+        "Draft": null,
+        "Jobsuche": null
+    },
+    "archive_folder": "Archive",
+    "folder_prefix": "INBOX.",
+    "log_file": "migration.log",
+    "root_folder": "[Gmail]/Alle Nachrichten",
+    "debug_delay": 0.0,
+    "labels_as_flagged": [
+        "Important",
+        "[Gmail]/Important",
+        "Starred",
+        "[Gmail]/Starred"
+    ]
+}
