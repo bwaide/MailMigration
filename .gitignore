@@ -1,3 +1,3 @@
-.env_template
+.env
 __pycache__/
 .env_test
