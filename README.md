@@ -198,7 +198,8 @@ DEST_PASSWORD=yourdestpassword
 
 ### config.json
 
-The configuration file contains global settings and module-specific settings. For example:
+The configuration file contains global settings and module-specific settings. Pay attention to the `root_folder`, as this name differs between different locales.
+Example configuration:
 
 ```json
 {
@@ -219,16 +220,7 @@ The configuration file contains global settings and module-specific settings. Fo
       "Spam": null,
       "Entwürfe": null,
       "Drafts": null,
-      "Draft": null,
-      "Jobsuche": null,
-      "INBOX/Haus": "INBOX.Haus",
-      "INBOX/Haus/BS Energy": "INBOX.Haus.BS Energy",
-      "INBOX/Haus/Montana (Gas)": "INBOX.Haus.Montana (Gas)",
-      "INBOX/Haus/Vermietung": "INBOX.Haus.Vermietung",
-      "INBOX/Haus/eprimo (Strom)": "INBOX.Haus.eprimo (Strom)",
-      "INBOX/Hochzeit": "INBOX.Hochzeit",
-      "INBOX/NAK": "INBOX.NAK",
-      "INBOX/Shopping": "INBOX.Shopping"
+      "Draft": null
     },
     "archive_folder": "Archive",
     "folder_prefix": "INBOX.",
