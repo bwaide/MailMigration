@@ -6,36 +6,16 @@ import base64
 import time
 import os
 import json
-import argparse
 from dotenv import load_dotenv
-from email import message_from_bytes
-from tqdm import tqdm  # Progress bar
+from tqdm import tqdm
 import shlex
-import logging
 
-def load_config(config_path="config.json"):
-    with open(config_path, "r") as file:
-        return json.load(file)
+from config import logger
+from config import get_config
 
-config = load_config()
+from stats import add_statistic, save_statistics_file, format_statistics, load_statistics_file
 
-# -------------------------------
-# Logging Setup (as before)
-# -------------------------------
-log_file = config.get("log_file", "migration.log")  # see below for config loading
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-file_handler = logging.FileHandler(log_file)
-file_handler.setLevel(logging.DEBUG)
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s",
-                              datefmt="%Y-%m-%d %H:%M:%S")
-file_handler.setFormatter(formatter)
-#console_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
+import attachments
 
 # -------------------------------
 # Configuration Loading
@@ -53,18 +33,20 @@ DEST_PASSWORD = os.getenv("DEST_PASSWORD")
 
 CHECKPOINT_FILE = "migration_checkpoint.json"
 
-print(SOURCE_EMAIL)
+# Global settings (used across the script)
+
+DEBUG_DELAY = get_config("general", "debug_delay", 0)
+RECONNECT_INTERVAL = get_config("general", "reconnect_interval", 500)
+STATISTICS_FILE = get_config("general", "statistics_file", "statistics.json")
 
 # These keys come from the config file
-FOLDER_MAPPING = config["folder_mapping"]
-DEFAULT_ARCHIVE_FOLDER = config["archive_folder"]
-FOLDER_PREFIX = config["folder_prefix"] 
-ROOT_FOLDER = config["root_folder"] 
-DEBUG_DELAY = config["debug_delay"]
+FOLDER_MAPPING = get_config("mapping", "folder_mapping", {})
+DEFAULT_ARCHIVE_FOLDER = get_config("mapping", "archive_folder", "Archive")
+FOLDER_PREFIX = get_config("mapping", "folder_prefix", "INBOX.")
+ROOT_FOLDER = get_config("mapping", "root_folder", "[Gmail]/All Mail")
 
 # Global variable defining labels that should be treated as "\Flagged" in IMAP
-LABELS_AS_FLAGGED = config["labels_as_flagged"]
-
+LABELS_AS_FLAGGED = get_config("mapping", "labels_as_flagged", ["Important", "[Gmail]/Important", "Starred", "[Gmail]/Starred"])
 
 def load_checkpoint():
     """Loads the last processed email index and counters from a checkpoint file."""
@@ -211,13 +193,13 @@ def reconnect_imap(server, email, password, max_retries=5):
     attempt = 0
     while attempt < max_retries:
         try:
-            logger.info(f"🔄 Attempting to reconnect to {server} (Attempt {attempt + 1}/{max_retries})...")
+            logger.debug(f"🔄 Attempting to reconnect to {server} (Attempt {attempt + 1}/{max_retries})...")
             conn = imaplib.IMAP4_SSL(server)
             conn.login(email, password)
-            logger.info(f"Reconnected successfully to {server}")
+            logger.debug(f"Reconnected successfully to {server}")
             return conn
         except imaplib.IMAP4.abort as e:
-            logger.warning(f"Reconnect attempt {attempt + 1} failed: {e}")
+            logger.debug(f"Reconnect attempt {attempt + 1} failed: {e}")
             time.sleep(2 ** attempt)  # Exponential backoff
             attempt += 1
     logger.error(f"Could not reconnect to {server} after {max_retries} attempts. Exiting.")
@@ -283,7 +265,7 @@ def convertFlags(flags):
     formatted_flags = " ".join(flags)
     return formatted_flags
 
-def extract_gmail_labels(msg_data):
+def extract_gmail_labels_(msg_data):
     labels = []
     for response_part in msg_data:
         if isinstance(response_part, tuple):
@@ -295,14 +277,66 @@ def extract_gmail_labels(msg_data):
                 break
     return labels
 
+import re
+import shlex
+
+def extract_gmail_labels(msg_data):
+    """
+    Extracts Gmail labels from the email's metadata (X-GM-LABELS).
+    Returns a list of correctly parsed labels while handling different formatting issues.
+    """
+    labels = []
+    
+    for response_part in msg_data:
+        if isinstance(response_part, tuple):
+            header = response_part[0].decode(errors="ignore")
+            
+            # Updated regex to match labels inside X-GM-LABELS
+            match = re.search(r'X-GM-LABELS \((.+?)\)\sRFC822', header)
+
+            if match:
+                raw_labels = match.group(1).strip()
+                # Handle cases where the labels might be quoted or unquoted
+                try:
+                    labels = shlex.split(raw_labels)  # Properly split labels
+                except ValueError as e:
+                    logger.error(f"Error parsing labels: {e}. Raw labels: {raw_labels}")
+                    labels = []  # Fallback to empty list
+
+            break  # Stop processing after the first match
+
+    return labels
+
+def collect_sender_statistic(raw_msg):
+    from email import message_from_bytes
+    import email.utils
+
+    raw_sender = ""
+    sender_email = "Unkown"
+
+    try:
+        email_msg = message_from_bytes(raw_msg)
+        raw_sender = str(email_msg.get("From", "Unknown"))
+        _, sender_email = email.utils.parseaddr(raw_sender)
+    except Exception as e:
+        logger.debug(f"WARNING: Extracting sender information failed: '{raw_sender}'")
+    finally:
+        add_statistic("sender", sender_email, 1)
+
 # -------------------------------
 # Centralized Migration Function
 # -------------------------------
 def migrate_all(source_conn, dest_conn, simulation=False):
     source_folder = f'"{ROOT_FOLDER}"'
+
+    success = False
     logger.info(f"\n🔍 Scanning {source_folder}...")
 
+    # In case of an early interruption, rebuild from last known checkpoint
     current_email, total_size_mb, skipped_emails = load_checkpoint()
+    if (current_email > 0):
+        # At the beginning of your main function:
+        load_statistics_file(STATISTICS_FILE)
 
     try:
         status, _ = source_conn.select(source_folder, readonly=True)
@@ -322,7 +356,7 @@ def migrate_all(source_conn, dest_conn, simulation=False):
             logger.info(f"🔄 Resuming from email {current_email + 1}...")
         
         # Initialize tqdm progress bar
-        progress_bar = tqdm(total=total_emails, desc="Processing emails", unit="email")
+        progress_bar = tqdm(total=total_emails, desc="Processing emails", unit="email", initial=current_email)
 
         while current_email < len(msg_nums):
             num = msg_nums[current_email]
@@ -366,6 +400,12 @@ def migrate_all(source_conn, dest_conn, simulation=False):
                     formatted_internal_date = convertDate(internal_date)
                     formatted_flags = convertFlags(flags)
                 
+                    collect_sender_statistic(raw_msg)
+
+                    # Process attachments (if enabled)
+                    if attachments.EXTRACT_ATTACHMENTS:
+                        raw_msg = attachments.extract_and_replace_attachments(raw_msg, formatted_internal_date)
+
                     destination_folder = map_labels_to_destination(labels)
 
                     if (destination_folder is None):
@@ -388,9 +428,15 @@ def migrate_all(source_conn, dest_conn, simulation=False):
 
                 progress_bar.update(1)
                 
-                # 🛑 **Save checkpoint every 100 emails**
+                # **Save checkpoint every 100 emails**
                 if current_email % 100 == 0:
                     save_checkpoint(current_email, total_size_mb, skipped_emails)
+
+                # --- Force a reconnection every 500 emails ---
+                if current_email > 0 and current_email % RECONNECT_INTERVAL == 0:
+                    logger.debug("Forcing periodic reconnection of IMAP connections...")
+                    reconnect(source_folder)
+                # ---------------------------------------------------------
 
                 # **Reduce IMAP request rate** (prevent timeouts/rate limiting)
                 time.sleep(DEBUG_DELAY)  # Adjust delay if needed
@@ -399,24 +445,36 @@ def migrate_all(source_conn, dest_conn, simulation=False):
 
             except imaplib.IMAP4.abort as e:
                 logger.error(f"IMAP connection lost during migration (mail #{num}). Error: {e}")
-                source_conn = reconnect_imap(SOURCE_IMAP_SERVER, SOURCE_EMAIL, SOURCE_PASSWORD)
-                dest_conn = reconnect_imap(DEST_IMAP_SERVER, DEST_EMAIL, DEST_PASSWORD)
-
-                # Re-select the folder after reconnecting
-                source_conn.select(source_folder, readonly=True)
+                reconnect(source_folder)
 
         progress_bar.close()
 
-        # Delete checkpoint on successful completion
-        delete_checkpoint()
-
         total_size_mb = round(total_size_mb / (1024 * 1024), 2)
+
+        success = True
+
+    except KeyboardInterrupt:
+        logger.warning("\nCTRL+C detected! Exiting gracefully...")
     except Exception as e:  # Catch any unexpected crash
         logger.error(f"🚨 Unexpected error: {e}. Saving checkpoint before exiting.")
         save_checkpoint(current_email, total_size_mb, skipped_emails)
         raise  # Re-raise the exception so it can be handled by the main script
+    finally:
+        save_statistics_file(STATISTICS_FILE)
+        save_checkpoint(current_email, total_size_mb, skipped_emails)
     
+    # Delete checkpoint on successful completion
+    if (success):
+        delete_checkpoint()
+
     return total_emails, total_size_mb, skipped_emails
+
+def reconnect(source_folder):
+    reconnect_imap(DEST_IMAP_SERVER, DEST_EMAIL, DEST_PASSWORD)
+    source_conn = reconnect_imap(SOURCE_IMAP_SERVER, SOURCE_EMAIL, SOURCE_PASSWORD)
+
+    # Re-select the source folder after reconnecting.
+    source_conn.select(source_folder, readonly=True)
 
 # -------------------------------
 # Now update your get_folder_mapping_info to use the consolidated function.
@@ -437,6 +495,7 @@ def get_folder_mapping_info(source_conn, dest_conn):
     
     mapping_info = {}
     for src in source_folders:
+        add_statistic("source_folders", src)
         # Get the destination folder using the consolidated function.
         dest = map_labels_to_destination([src])
         # Skip folders that explicitly map to null.
@@ -487,6 +546,11 @@ def migrate(source_conn, dest_conn, simulation):
     logger.info(f"Skipped emails: {skipped}\t(Check migration log for details)")
     logger.info(f"Total size: {total_size_mb} MB")
 
+    # Too long to print it to the console
+    logger.debug("\n=== STATISTICS ===")
+    logger.debug(format_statistics())
+
+
 def prepare_and_migrate(simulation):
     logger.info("\n" + ("SIMULATION MODE: Scanning mailbox" if simulation else "LIVE MODE: Starting migration"))
     
@@ -521,6 +585,8 @@ def main():
             sys.exit(0)  # Exit the script safely
     
     prepare_and_migrate(simulation)
+
+    save_statistics_file(STATISTICS_FILE)
 
 if __name__ == '__main__':
     main()
