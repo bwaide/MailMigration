@@ -1,9 +1,4 @@
 
-Be aware: for larger mailboxes this might run hours.
-
-  
-  
-
 # IMAP Email Migration Script
 A Python-based email migration tool designed to migrate emails from a Gmail inbox (or other IMAP sources) to another IMAP mailbox. The script is highly configurable and extensible, featuring folder mapping, attachment extraction (with external storage and link replacement), checkpointing for restartability, and detailed logging and statistics.
 
@@ -206,7 +201,7 @@ DEST_PASSWORD=yourdestpassword
 The configuration file contains global settings and module-specific settings. For example:
 
 ```json
-`{
+{
   "global": {
     "folder_mapping": {
       "Inbox": "INBOX",
@@ -254,7 +249,7 @@ The configuration file contains global settings and module-specific settings. Fo
     "external_storage_path": "/Users/bwaide/Documents/Development/GoogleMigration/downloads",
     "storage_url": "file:///Users/bwaide/Documents/Development/GoogleMigration/downloads"
   }
-}` 
+}
 ```
 _Note:_ You can expand this configuration with additional modules or plugins as needed.
 
