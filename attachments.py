@@ -7,6 +7,7 @@ import hashlib
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from datetime import datetime
+import re
 
 from config import get_config
 from stats import add_statistic
@@ -53,6 +54,26 @@ def should_extract_attachment(part):
 
     return file_ext in ATTACHMENT_WHITELIST and file_size < MAX_ATTACHMENT_SIZE and file_size > MIN_ATTACHMENT_SIZE
 
+# Helper function to sanitize filenames
+def make_filename_safe(filename):
+    """
+    Sanitizes a filename by:
+      - Removing any "file://" prefix.
+      - Replacing characters not allowed on most systems (< > : " / \ | ? *) with an underscore.
+      - Stripping leading/trailing whitespace.
+    
+    Args:
+        filename (str): The original filename.
+    
+    Returns:
+        str: A safe filename.
+    """
+    # Remove any URL scheme if present
+    filename = filename.replace("file://", "")
+    # Replace illegal characters with underscore
+    safe_filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+    return safe_filename.strip()
+
 def save_attachment(part, email_date_str):
     """
     Save an extracted attachment to disk in a month-based folder (e.g., "2023_10")
@@ -70,8 +91,9 @@ def save_attachment(part, email_date_str):
     if not filename:
         return None
 
-    # Normalize the filename to remove trailing query strings etc.
-    filename = normalize_filename(filename)
+    # Normalize the filename (if you have a normalize_filename function, otherwise, use the safe version)
+    # Here we simply sanitize the filename.
+    filename = make_filename_safe(filename)
 
     # Strip extra quotes from the date string, if present.
     date_str = email_date_str.strip('"')
@@ -81,7 +103,6 @@ def save_attachment(part, email_date_str):
         email_date = parsedate_to_datetime(date_str)
     except Exception as e:
         try:
-            # Fallback: try using datetime.strptime with the appropriate format.
             email_date = datetime.strptime(date_str, "%d-%b-%Y %H:%M:%S %z")
         except Exception as e2:
             print(f"Date parsing failed for: {date_str}")

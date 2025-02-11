@@ -27,7 +27,7 @@
         },
         "archive_folder": "Archive",
         "folder_prefix": "INBOX.",
-        "root_folder": "[Gmail]/All Mail",
+        "root_folder": "[Gmail]/Alle Nachrichten",
         "labels_as_flagged": [
             "Important",
             "[Gmail]/Important",

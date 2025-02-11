@@ -10,6 +10,9 @@ from dotenv import load_dotenv
 from tqdm import tqdm
 import shlex
 
+import socket
+import ssl  # For _ssl.SSLError
+
 from config import logger
 from config import get_config
 
@@ -198,7 +201,7 @@ def reconnect_imap(server, email, password, max_retries=5):
             conn.login(email, password)
             logger.debug(f"Reconnected successfully to {server}")
             return conn
-        except imaplib.IMAP4.abort as e:
+        except (imaplib.IMAP4.abort, socket.error, ssl.SSLError) as e:
             logger.debug(f"Reconnect attempt {attempt + 1} failed: {e}")
             time.sleep(2 ** attempt)  # Exponential backoff
             attempt += 1
