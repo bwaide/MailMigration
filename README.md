@@ -2,6 +2,7 @@
 # IMAP Email Migration Script
 A Python-based email migration tool designed to migrate emails from a Gmail inbox (or other IMAP sources) to another IMAP mailbox. The script is highly configurable and extensible, featuring folder mapping, attachment extraction (with external storage and link replacement), checkpointing for restartability, and detailed logging and statistics.
 
+![Starting a migration](https://waide.de/public/Mail_Migration.gif)
 ---
 
 ## Table of Contents
