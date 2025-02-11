@@ -438,7 +438,7 @@ def migrate_all(source_conn, dest_conn, simulation=False):
                 # --- Force a reconnection every 500 emails ---
                 if current_email > 0 and current_email % RECONNECT_INTERVAL == 0:
                     logger.debug("Forcing periodic reconnection of IMAP connections...")
-                    reconnect(source_folder)
+                    source_conn, dest_conn = reconnect(source_folder)
                 # ---------------------------------------------------------
 
                 # **Reduce IMAP request rate** (prevent timeouts/rate limiting)
@@ -448,7 +448,7 @@ def migrate_all(source_conn, dest_conn, simulation=False):
 
             except imaplib.IMAP4.abort as e:
                 logger.error(f"IMAP connection lost during migration (mail #{num}). Error: {e}")
-                reconnect(source_folder)
+                source_conn, dest_conn = reconnect(source_folder)
 
         progress_bar.close()
 
@@ -473,11 +473,20 @@ def migrate_all(source_conn, dest_conn, simulation=False):
     return total_emails, total_size_mb, skipped_emails
 
 def reconnect(source_folder):
-    reconnect_imap(DEST_IMAP_SERVER, DEST_EMAIL, DEST_PASSWORD)
-    source_conn = reconnect_imap(SOURCE_IMAP_SERVER, SOURCE_EMAIL, SOURCE_PASSWORD)
+    """
+    Reconnects both the source and destination IMAP connections and re-selects
+    the specified source folder.
+    
+    Returns:
+        new_source_conn, new_dest_conn: The new connection objects.
+    """
+    new_dest_conn = reconnect_imap(DEST_IMAP_SERVER, DEST_EMAIL, DEST_PASSWORD)
+    new_source_conn = reconnect_imap(SOURCE_IMAP_SERVER, SOURCE_EMAIL, SOURCE_PASSWORD)
+    new_source_conn.select(source_folder, readonly=True)
 
-    # Re-select the source folder after reconnecting.
-    source_conn.select(source_folder, readonly=True)
+    time.sleep(0.5) # wait a few milliseconds
+
+    return new_source_conn, new_dest_conn
 
 # -------------------------------
 # Now update your get_folder_mapping_info to use the consolidated function.

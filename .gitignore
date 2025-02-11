@@ -5,3 +5,4 @@ __pycache__/
 migration.log
 statistics.json
 venv/
+migration_checkpoint.json
