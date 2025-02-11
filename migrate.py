@@ -407,7 +407,7 @@ def migrate_all(source_conn, dest_conn, simulation=False):
 
                     # Process attachments (if enabled)
                     if attachments.EXTRACT_ATTACHMENTS:
-                        raw_msg = attachments.extract_and_replace_attachments(raw_msg, formatted_internal_date)
+                        raw_msg = attachments.extract_and_replace_attachments(raw_msg, formatted_internal_date, simulation)
 
                     destination_folder = map_labels_to_destination(labels)
 

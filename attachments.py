@@ -10,6 +10,7 @@ from datetime import datetime
 import re
 
 from config import get_config
+from config import logger
 from stats import add_statistic
 
 # Global variable: Define which attachment types and sizes should be extracted
@@ -74,7 +75,7 @@ def make_filename_safe(filename):
     safe_filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
     return safe_filename.strip()
 
-def save_attachment(part, email_date_str):
+def save_attachment(part, email_date_str, simulation):
     """
     Save an extracted attachment to disk in a month-based folder (e.g., "2023_10")
     and return a file:// URL pointing to the stored file.
@@ -112,23 +113,29 @@ def save_attachment(part, email_date_str):
     # Create a folder name based on the email's date (e.g., "2023_10")
     month_folder = email_date.strftime("%Y_%m")
     storage_dir = os.path.join(EXTERNAL_STORAGE_PATH, month_folder)
-    os.makedirs(storage_dir, exist_ok=True)
+
+    if (not simulation):
+        os.makedirs(storage_dir, exist_ok=True)
 
     # Generate a unique filename using a hash prefix to avoid collisions.
     hash_prefix = hashlib.md5(filename.encode()).hexdigest()[:8]
     storage_filename = f"{hash_prefix}_{filename}"
     storage_path = os.path.join(storage_dir, storage_filename)
 
-    # Write the attachment data to disk.
-    file_data = part.get_payload(decode=True)
-    with open(storage_path, "wb") as f:
-        f.write(file_data)
+    if (not simulation):
+        # Write the attachment data to disk.
+        file_data = part.get_payload(decode=True)
+        with open(storage_path, "wb") as f:
+            f.write(file_data)
+
+    add_statistic("attachments", "extracted")
+    logger.debug(f"Attachment successfully extracted to {storage_path}")
 
     # Create a file:// URL pointing to the stored file using pathlib.
     file_url = Path(storage_path).as_uri()
     return file_url
 
-def extract_and_replace_attachments(raw_msg, email_date_str):
+def extract_and_replace_attachments(raw_msg, email_date_str, simulation):
     """
     Extracts attachments meeting the criteria and replaces them with a link.
     Reassembles the email so that the body appears only once.
@@ -170,7 +177,7 @@ def extract_and_replace_attachments(raw_msg, email_date_str):
         if filename:
             # This part is an attachment.
             if should_extract_attachment(part):
-                link = save_attachment(part, email_date_str)
+                link = save_attachment(part, email_date_str, simulation)
                 if link:
                     attachment_links.append(link)
             else:
