@@ -1,0 +1,15 @@
+# Dependabot: security updates only, bundled into one PR per ecosystem (npv, 2026-10-25).
+# open-pull-requests-limit 0 switches version updates off; security updates are not limited by it.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directories:
+      - "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    groups:
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
